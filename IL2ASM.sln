@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IL2ASM", "IL2ASM\IL2ASM.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApplication", "TestApplication\TestApplication.csproj", "{854C70DA-787F-408A-8FAA-D3A11694AF16}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IL2ASM.Binder", "IL2ASM.Binder\IL2ASM.Binder.csproj", "{395C523D-F307-4518-A307-7FB785791DF6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{854C70DA-787F-408A-8FAA-D3A11694AF16}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{854C70DA-787F-408A-8FAA-D3A11694AF16}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{854C70DA-787F-408A-8FAA-D3A11694AF16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{395C523D-F307-4518-A307-7FB785791DF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{395C523D-F307-4518-A307-7FB785791DF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{395C523D-F307-4518-A307-7FB785791DF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{395C523D-F307-4518-A307-7FB785791DF6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

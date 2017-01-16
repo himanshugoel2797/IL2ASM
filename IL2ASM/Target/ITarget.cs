@@ -15,9 +15,15 @@ namespace IL2ASM.Target
         int RegisterCount { get; }
         int PointerSize { get; }
 
-        string EmitOpCodes(IL.ILParser opc);
+        string EmitNop();
+
+        string Ret(int arg_size);
+        string Ret(int arg_size, int target_sz);
+
+        string Call(int arg_size, string target);
 
         string AllocateStackSpace(int space);
+        string FreeStackSpace(int space);
 
         string AllocateRegister();
         string HandleSpillover();

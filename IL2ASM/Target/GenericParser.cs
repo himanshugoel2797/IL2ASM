@@ -35,6 +35,7 @@ namespace IL2ASM.Target
         public StackItemType Type;
         public ulong Value;
         public ulong Size;
+        public string TypeName;
     }
 
     public struct FieldDefinition
@@ -42,6 +43,7 @@ namespace IL2ASM.Target
         public ClassEntry Entry;
         public Type Type;
         public bool IsProperty;
+        public bool IsRefType;
 
         public int Size;
         public int Offset;
@@ -69,6 +71,9 @@ namespace IL2ASM.Target
         public int MetadataToken;
         public string ParentClass;
         public Type Type;
+
+        public Dictionary<string, FieldDefinition> StaticFields;
+        public Dictionary<string, FieldDefinition> InstanceFields;
 
         public Dictionary<string, FieldDefinition> FieldTable;  //Track via mangled names
         public Dictionary<string, MethodDefinition> MethodVTable;   //Track via mangled names
@@ -189,7 +194,24 @@ namespace IL2ASM.Target
         }
         #endregion
 
-        private string ParseIL(Module m, MethodBody body, ParameterInfo[] param, ITarget target)
+        private int GetSize(ParameterInfo[] param, bool IsStatic, ITarget target)
+        {
+            int args_sz = 0;
+            if (IsStatic)
+                args_sz += target.PointerSize;
+
+            for (int i = 0; i < param.Length; i++)
+            {
+                if (param[i].ParameterType.IsPointer | param[i].ParameterType.IsArray | param[i].ParameterType.IsByRef)
+                    args_sz += target.PointerSize;
+                else
+                    args_sz += ClassDefinitions[MangleClassName(param[i].ParameterType)].Size;
+            }
+
+            return args_sz;
+        }
+
+        private string ParseIL(Module m, MethodBody body, ParameterInfo[] param, bool IsStatic, ITarget target)
         {
             StringBuilder builder = new StringBuilder();
 
@@ -198,44 +220,48 @@ namespace IL2ASM.Target
 
             Dictionary<int, List<int>> arg_slots = new Dictionary<int, List<int>>();
 
-            Stack<StackItem> stack = new Stack<StackItem>();
-            ulong[] args = new ulong[MaxArguments];
-            ulong[] locals = new ulong[MaxLocalVariables];
 
             //First obtain the maximum number of slots of each kind needed, preallocate the space for them on the stack
             int arg_cnt = param.Length;
-            int args_sz = 0;
+            int args_sz = GetSize(param, IsStatic, target);
 
+            //Need room for a pointer to 'this'
+            if (!IsStatic)
+                arg_cnt++;
+
+
+            //Local variables
             int local_cnt = body.LocalVariables.Count;
             int local_sz = 0;
 
-            for(int i = 0; i < body.LocalVariables.Count; i++)
+            for (int i = 0; i < body.LocalVariables.Count; i++)
                 if (body.LocalVariables[i].LocalType.IsPointer | body.LocalVariables[i].LocalType.IsArray | body.LocalVariables[i].LocalType.IsByRef)
                     local_sz += target.PointerSize;
                 else
                     local_sz += ClassDefinitions[MangleClassName(body.LocalVariables[i].LocalType)].Size;
 
-            for (int i = 0; i < param.Length; i++)
-                if (param[i].ParameterType.IsPointer | param[i].ParameterType.IsArray | param[i].ParameterType.IsByRef)
-                    args_sz += target.PointerSize;
-                else
-                    args_sz += ClassDefinitions[MangleClassName(param[i].ParameterType)].Size;
 
-            //First allocate enough space for the arguments and locals
-            if(args_sz + local_sz != 0)
-                builder.AppendLine(target.AllocateStackSpace(args_sz + local_sz));
-            
+
+            //In instance methods, arg 0 is always the 'this' pointer.
+
+            Stack<StackItem> stack = new Stack<StackItem>();
+            StackItem[] args = new StackItem[arg_cnt];
+            StackItem[] locals = new StackItem[local_cnt];
+
+            //First allocate enough space for the locals, arguments are already on the stack
+            if (local_sz != 0)
+                builder.AppendLine(target.AllocateStackSpace(local_sz));
+
             do
             {
                 //For each register allocation, we want to pick disjoint sets of slots where a connection represents overlap
                 //Graph coloring where a connection represents overlap in usage
                 //Start by iterating to find the first and last time a slot is used
 
+                var op = p.GetCurrentOpCode();
 
+                builder.Append("\t" + p.GetCurrentOpCode().Name);
 
-
-                /*builder.Append(p.GetCurrentOpCode().Name);
-                
                 for (uint i = 0; i < p.GetParameterCount(); i++)
                 {
                     var parameter = p.GetParameter(i);
@@ -256,13 +282,81 @@ namespace IL2ASM.Target
                     {
                         builder.Append(" " + m.ResolveString((int)parameter));
                     }
+                    else if (param_type == OperandType.InlineField && FieldMetadataTokens.ContainsKey((int)parameter))
+                    {
+                        builder.Append(" " + FieldMetadataTokens[(int)parameter].Entry.Name);
+                    }
                     else
                         builder.Append(" " + p.GetParameter(i).ToString("X16"));
-                }*/
-
-                builder.AppendLine(target.EmitOpCodes(p));
-
+                }
                 builder.AppendLine();
+
+                //builder.AppendLine(target.EmitOpCodes(p));
+
+                if (op == OpCodes.Ldarg_0)
+                {
+                    stack.Push(args[0]);
+
+                    //Calculate the effective byte offset of the arg, pass it along with the size to target, which is responsible for the appropriate memcpy
+                }
+                else if (op == OpCodes.Nop)
+                {
+
+                }
+                else if (op == OpCodes.Leave_S)
+                {
+
+                }
+                else if (op == OpCodes.Call)
+                {
+                    //Get the target method info
+                    ParameterInfo[] m_param = null;
+                    bool m_isStatic = false;
+                    string fn_name = "";
+
+
+                    int tkn = (int)p.GetParameter(0);
+                    if (CTorMetadataTokens.ContainsKey(tkn))
+                    {
+                        m_param = CTorMetadataTokens[tkn].Parameters;
+                        m_isStatic = CTorMetadataTokens[tkn].Entry.IsStatic;
+                        fn_name = CTorMetadataTokens[tkn].Entry.FinalName;
+                    }
+                    else if (MethodMetadataTokens.ContainsKey(tkn))
+                    {
+                        m_param = MethodMetadataTokens[tkn].Parameters;
+                        m_isStatic = MethodMetadataTokens[tkn].Entry.IsStatic;
+                        fn_name = MethodMetadataTokens[tkn].Entry.FinalName;
+                    }
+
+                    //Set the arg stack pointer to right before the arguments and emit a call
+                    if (m_param != null)
+                        builder.AppendLine(target.Call(GetSize(m_param, m_isStatic, target), fn_name));
+                    else
+                    {
+                        //TODO error out
+                    }
+                }
+                else if (op == OpCodes.Ret)
+                {
+                    ulong returnSz = 0;
+
+                    //Delay pushes until the pushed data needs to be used
+                    //Allowing for optimization 
+                    //target.FreeStackSpace()
+
+                    if(stack.Count > 0)
+                        returnSz = stack.Pop().Size;
+
+
+                    if (returnSz == 0)
+                        builder.AppendLine(target.Ret(args_sz));
+                    else
+                        builder.AppendLine(target.Ret(args_sz, (int)returnSz));
+                }
+                //else
+                //    throw new Exception();
+                
             }
             while (p.NextInstruction());
 
@@ -286,6 +380,7 @@ namespace IL2ASM.Target
             string code = "";
 
             mthd_name = MangleMethodName(info);
+            code += target.FunctionEntry(mthd_name);
 
             //Handle custom declarations here
             if (ClassDefinitions.ContainsKey(MangleClassName(info.DeclaringType)))
@@ -294,10 +389,9 @@ namespace IL2ASM.Target
                 info = ClassDefinitions[MangleClassName(info.DeclaringType)].Type.GetMethod(info.Name);
 
                 if (info == null)
-                    return "";
+                    return code;
             }
 
-            code += target.FunctionEntry(mthd_name);
 
             if (!info.IsVirtual)
             {
@@ -341,7 +435,7 @@ namespace IL2ASM.Target
 
             builder.AppendLine(GenerateMethodSignature(info, target));
             builder.AppendLine(GenerateMethodEntryCode(info, target, out mthd_name));
-            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), target));
+            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), info.IsStatic, target));
             builder.AppendLine(GenerateMethodExitCode(info, mthd_name, target));
 
             ProcessedTokens.Add(info.MetadataToken);
@@ -366,6 +460,7 @@ namespace IL2ASM.Target
             //Setup stack frame and allocate stack space
             string code = "";
             mthd_name = MangleConstructorName(info);
+            code += target.FunctionEntry(mthd_name);
 
             //Handle custom declarations here
             if (ClassDefinitions.ContainsKey(MangleClassName(info.DeclaringType)))
@@ -379,10 +474,9 @@ namespace IL2ASM.Target
                 info = ClassDefinitions[MangleClassName(info.DeclaringType)].Type.GetConstructor(ctor_params);
 
                 if (info == null)
-                    return "";
+                    return code;
             }
 
-            code += target.FunctionEntry(mthd_name);
 
             if (!info.IsVirtual)
             {
@@ -426,7 +520,7 @@ namespace IL2ASM.Target
 
             builder.AppendLine(GenerateConstructorSignature(info, target));
             builder.AppendLine(GenerateConstructorEntryCode(info, target, out mthd_name));
-            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), target));
+            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), info.IsStatic, target));
             builder.AppendLine(GenerateConstructorExitCode(info, mthd_name, target));
 
             ProcessedTokens.Add(info.MetadataToken);
@@ -487,13 +581,23 @@ namespace IL2ASM.Target
                 var field_type_name = MangleClassName(field_type);
                 var mangled_field_name = MangleFieldName(fields[i]);
 
-                if (!ClassDefinitions.ContainsKey(field_type_name))
+                if (field_type.IsPointer)
+                    field_type_name = field_type_name.Substring(0, field_type_name.Length - 1);
+
+                bool isRefType = (field_type_name == mangled_class_name) | field_type.IsPointer;
+
+                //Handle the case where an object contains a field of its parent's type, this is only possible with reference types, so it ends up being a pointer.
+                if (!ClassDefinitions.ContainsKey(field_type_name) && field_type_name != mangled_class_name)
                     ParseClass(field_type, target);
 
-                int field_size = ClassDefinitions[field_type_name].Size;
+                int field_size = 0;
+                if (!isRefType)
+                    field_size = ClassDefinitions[field_type_name].Size;
+                else
+                    field_size = target.PointerSize;    //Must be a reference type
 
                 //Round up to the field size
-                if (!fields[i].IsStatic && sz % field_size != 0)
+                if (!fields[i].IsStatic && field_size != 0 && sz % field_size != 0)
                     sz += (field_size - (sz % field_size));
 
                 field_defs[fields[i].Name] = new FieldDefinition()
@@ -508,6 +612,7 @@ namespace IL2ASM.Target
                         MetadataToken = fields[i].MetadataToken,
                         FinalName = FinalFieldName(fields[i]),
                     },
+                    IsRefType = isRefType,
                     IsProperty = false,
                     Type = fields[i].FieldType,
                     Offset = sz,

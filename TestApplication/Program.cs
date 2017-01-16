@@ -32,7 +32,9 @@ namespace TestApplication
             public float b;
         }
 
-        static F b;
+        F b;
+        Program p;
+        int a;
 
         public int this[int a]
         {
@@ -48,7 +50,7 @@ namespace TestApplication
 
         public override void Tester(ref int b)
         {
-            this.GetType();
+            this.b.a = b;
             Console.WriteLine("Test2" + b.ToString());
         }
 
@@ -58,7 +60,7 @@ namespace TestApplication
             a.a = 50;
 
             int z = 0;
-
+            
             Program prog = new Program();
             prog.Tester(ref z);
         }

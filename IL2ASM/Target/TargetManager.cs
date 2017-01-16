@@ -37,11 +37,11 @@ namespace IL2ASM.Target
             }*/
 
             var types = a.GetTypes();
-
+            
             //First parse all the classes, build their structures, allocate static globals
             for (int i = 0; i < types.Length; i++)
             {
-                code.AppendLine(p.ParseClass(types[i], parsers[arch]));
+                p.ParseClass(types[i], parsers[arch]);
             }
 
             //Now actually compile all their data

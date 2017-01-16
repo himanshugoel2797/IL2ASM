@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 
 namespace IL2ASM.Target
 {
@@ -11,6 +13,11 @@ namespace IL2ASM.Target
         string FunctionExit(string name);
 
         int RegisterCount { get; }
+        int PointerSize { get; }
+
+        string EmitOpCodes(IL.ILParser opc);
+
+        string AllocateStackSpace(int space);
 
         string AllocateRegister();
         string HandleSpillover();
@@ -24,5 +31,7 @@ namespace IL2ASM.Target
 
         string GenerateSymbol(bool isPublic, bool isStatic, bool read, bool write, bool exec, bool isInited, string name);
         string AllocateSpace(int size);
+
+        string GenerateVTable(List<string> table, Dictionary<string, MethodDefinition> mthds, Dictionary<string, ConstructorDefinition> ctors);
     }
 }

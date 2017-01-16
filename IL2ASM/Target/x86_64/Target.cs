@@ -11,7 +11,13 @@ namespace IL2ASM.Target.x86_64
 {
     class Target : ITarget
     {
-        const int PointerSize = 8;
+        public int PointerSize
+        {
+            get
+            {
+                return 8;
+            }
+        }
 
         public int RegisterCount
         {
@@ -19,6 +25,28 @@ namespace IL2ASM.Target.x86_64
             {
                 return RegisterAllocator.RegisterCount;
             }
+        }
+
+        public string GenerateVTable(List<string> vtable, Dictionary<string, MethodDefinition> mthds, Dictionary<string, ConstructorDefinition> ctors)
+        {
+            StringBuilder builder = new StringBuilder();
+
+            for(int i = 0; i < vtable.Count; i++)
+            {
+                string name = "";
+                if (mthds.ContainsKey(vtable[i]))
+                {
+                    name = mthds[vtable[i]].Entry.FinalName;
+                }
+                else
+                {
+                    name = ctors[vtable[i]].Entry.FinalName;
+                }
+
+                builder.AppendLine($".long ${name}");
+            }
+
+            return builder.ToString();
         }
 
         public string Add()
@@ -145,6 +173,20 @@ namespace IL2ASM.Target.x86_64
         public string PushVariable(int index)
         {
             throw new NotImplementedException();
+        }
+
+        public string AllocateStackSpace(int space)
+        {
+            return "sub %rsp, $" + space;
+        }
+
+        public string EmitOpCodes(IL.ILParser p)
+        {
+            StringBuilder builder = new StringBuilder();
+
+
+
+            return builder.ToString();
         }
     }
 }

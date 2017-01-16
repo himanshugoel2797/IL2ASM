@@ -48,6 +48,11 @@ namespace IL2ASM.IL
             }
         }
         
+        public void Reset()
+        {
+            CurrentOffset = 0;
+        }
+
         public bool NextInstruction()
         {
             if (CurrentOffset >= il.Length)

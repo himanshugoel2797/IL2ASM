@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,12 +15,26 @@ namespace IL2ASM.Target
         public string Namespace;
         public string Class;
         public string Name;
-        public string Type;
+        public string FinalName;
 
         public int MetadataToken;
 
         public bool IsPublic;
         public bool IsStatic;
+    }
+
+    public enum StackItemType
+    {
+        Constant,
+        Address,
+        Value
+    }
+
+    public struct StackItem
+    {
+        public StackItemType Type;
+        public ulong Value;
+        public ulong Size;
     }
 
     public struct FieldDefinition
@@ -37,12 +52,15 @@ namespace IL2ASM.Target
         public ClassEntry Entry;
         public ParameterInfo[] Parameters;
         public Type ReturnType;
+        public MethodInfo Info;
     }
 
     public struct ConstructorDefinition
     {
         public ClassEntry Entry;
         public ParameterInfo[] Parameters;
+        public MethodBody Body;
+        public ConstructorInfo Info;
     }
 
     public struct ClassDefinition
@@ -51,33 +69,45 @@ namespace IL2ASM.Target
         public int MetadataToken;
         public string ParentClass;
         public Type Type;
-        
-        public Dictionary<string, FieldDefinition> FieldTable;
-        public Dictionary<string, MethodDefinition> MethodVTable;
-        public Dictionary<string, ConstructorDefinition> ConstructorTable;
 
-        public List<string> FinalVTable;
+        public Dictionary<string, FieldDefinition> FieldTable;  //Track via mangled names
+        public Dictionary<string, MethodDefinition> MethodVTable;   //Track via mangled names
+        public Dictionary<string, ConstructorDefinition> ConstructorTable;  //Track via mangled names
+
+        public List<string> FinalVTable;    //Track mangled names, combine with VTables above to get final names
     }
 
     class GenericParser
     {
+        public const int MaxArguments = 512;
+        public const int MaxLocalVariables = 512;
+
         public Dictionary<string, ClassDefinition> ClassDefinitions;
 
         public Dictionary<int, MethodDefinition> MethodMetadataTokens;
         public Dictionary<int, ConstructorDefinition> CTorMetadataTokens;
         public Dictionary<int, FieldDefinition> FieldMetadataTokens;
         public Dictionary<int, ClassDefinition> ClassMetadataTokens;
+        public Dictionary<int, string> StringTable;
+        public List<string> FinalStringTable;
+
+        private HashSet<int> ProcessedTokens;
 
         public GenericParser()
         {
+            ProcessedTokens = new HashSet<int>();
             ClassDefinitions = new Dictionary<string, ClassDefinition>();
 
             MethodMetadataTokens = new Dictionary<int, MethodDefinition>();
             CTorMetadataTokens = new Dictionary<int, ConstructorDefinition>();
             FieldMetadataTokens = new Dictionary<int, FieldDefinition>();
             ClassMetadataTokens = new Dictionary<int, ClassDefinition>();
+
+            StringTable = new Dictionary<int, string>();
+            FinalStringTable = new List<string>();
         }
 
+        #region Type Substitution API
         public void ReplaceDefinition(Type src, ClassDefinition dst)
         {
             int metadata_token = src.MetadataToken;
@@ -89,6 +119,8 @@ namespace IL2ASM.Target
             ClassDefinitions[MangleClassName(src)] = dst;
         }
 
+        #endregion
+
         #region Name Conversion/Mangling
         private string CleanupName(string name)
         {
@@ -97,7 +129,7 @@ namespace IL2ASM.Target
 
         private string MangleFieldName(FieldInfo info)
         {
-            string res = $"_{info.MetadataToken}";
+            string res = $"_{info.MetadataToken.ToString("X8")}";
 
             return CleanupName(res);
         }
@@ -135,9 +167,29 @@ namespace IL2ASM.Target
 
             return CleanupName($"{t.Namespace}_{t.Name}");
         }
+
+        private string FinalFieldName(FieldInfo t)
+        {
+            return "_" + t.MetadataToken.ToString("X8") + "_";
+        }
+
+        private string FinalConstructorName(ConstructorInfo t)
+        {
+            return "_" + t.MetadataToken.ToString("X8") + "_";
+        }
+
+        private string FinalMethodName(MethodInfo t)
+        {
+            return "_" + t.MetadataToken.ToString("X8") + "_";
+        }
+
+        private string FinalClassName(Type t)
+        {
+            return "_" + t.MetadataToken.ToString("X8") + "_";
+        }
         #endregion
 
-        private string ParseIL(MethodBody body, ITarget target)
+        private string ParseIL(Module m, MethodBody body, ParameterInfo[] param, ITarget target)
         {
             StringBuilder builder = new StringBuilder();
 
@@ -146,37 +198,73 @@ namespace IL2ASM.Target
 
             Dictionary<int, List<int>> arg_slots = new Dictionary<int, List<int>>();
 
+            Stack<StackItem> stack = new Stack<StackItem>();
+            ulong[] args = new ulong[MaxArguments];
+            ulong[] locals = new ulong[MaxLocalVariables];
+
+            //First obtain the maximum number of slots of each kind needed, preallocate the space for them on the stack
+            int arg_cnt = param.Length;
+            int args_sz = 0;
+
+            int local_cnt = body.LocalVariables.Count;
+            int local_sz = 0;
+
+            for(int i = 0; i < body.LocalVariables.Count; i++)
+                if (body.LocalVariables[i].LocalType.IsPointer | body.LocalVariables[i].LocalType.IsArray | body.LocalVariables[i].LocalType.IsByRef)
+                    local_sz += target.PointerSize;
+                else
+                    local_sz += ClassDefinitions[MangleClassName(body.LocalVariables[i].LocalType)].Size;
+
+            for (int i = 0; i < param.Length; i++)
+                if (param[i].ParameterType.IsPointer | param[i].ParameterType.IsArray | param[i].ParameterType.IsByRef)
+                    args_sz += target.PointerSize;
+                else
+                    args_sz += ClassDefinitions[MangleClassName(param[i].ParameterType)].Size;
+
+            //First allocate enough space for the arguments and locals
+            if(args_sz + local_sz != 0)
+                builder.AppendLine(target.AllocateStackSpace(args_sz + local_sz));
+            
             do
             {
-                builder.Append(p.GetCurrentOpCode().Name);
-
                 //For each register allocation, we want to pick disjoint sets of slots where a connection represents overlap
                 //Graph coloring where a connection represents overlap in usage
                 //Start by iterating to find the first and last time a slot is used
 
+
+
+
+                /*builder.Append(p.GetCurrentOpCode().Name);
+                
                 for (uint i = 0; i < p.GetParameterCount(); i++)
                 {
                     var parameter = p.GetParameter(i);
                     var param_type = p.GetParameterType(i);
 
-                    if(param_type == System.Reflection.Emit.OperandType.InlineMethod && (MethodMetadataTokens.ContainsKey((int)parameter) || CTorMetadataTokens.ContainsKey((int)parameter)))
+                    if (param_type == OperandType.InlineMethod && (MethodMetadataTokens.ContainsKey((int)parameter) || CTorMetadataTokens.ContainsKey((int)parameter)))
                     {
-                        if(MethodMetadataTokens.ContainsKey((int)parameter))
+                        if (MethodMetadataTokens.ContainsKey((int)parameter))
                             builder.Append(" " + MethodMetadataTokens[(int)parameter].Entry.Name);
                         else
                             builder.Append(" " + CTorMetadataTokens[(int)parameter].Entry.Class);
                     }
-                    else if(param_type == System.Reflection.Emit.OperandType.InlineType && ClassMetadataTokens.ContainsKey((int)parameter))
+                    else if (param_type == OperandType.InlineType && ClassMetadataTokens.ContainsKey((int)parameter))
                     {
                         builder.Append(" " + ClassMetadataTokens[(int)parameter].Type.Name);
                     }
+                    else if (param_type == OperandType.InlineString)
+                    {
+                        builder.Append(" " + m.ResolveString((int)parameter));
+                    }
                     else
                         builder.Append(" " + p.GetParameter(i).ToString("X16"));
-                }
+                }*/
+
+                builder.AppendLine(target.EmitOpCodes(p));
 
                 builder.AppendLine();
             }
-            while (p.NextInstruction()) ;
+            while (p.NextInstruction());
 
             return builder.ToString();
         }
@@ -187,7 +275,7 @@ namespace IL2ASM.Target
             string method = "";
             string method_name = MangleMethodName(info);
 
-            method += target.GenerateSymbol(info.IsPublic, info.IsStatic, true, false, true, true, method_name);
+            method += target.GenerateSymbol(info.IsPublic, info.IsStatic, true, false, true, true, FinalMethodName(info));
 
             return method;
         }
@@ -243,6 +331,9 @@ namespace IL2ASM.Target
 
         public string ParseMethod(MethodInfo info, ITarget target)
         {
+            if (ProcessedTokens.Contains(info.MetadataToken))
+                return "";
+
             MethodBody bdy = info.GetMethodBody();
             StringBuilder builder = new StringBuilder();
 
@@ -250,9 +341,11 @@ namespace IL2ASM.Target
 
             builder.AppendLine(GenerateMethodSignature(info, target));
             builder.AppendLine(GenerateMethodEntryCode(info, target, out mthd_name));
-            builder.AppendLine(ParseIL(info.GetMethodBody(), target));
+            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), target));
             builder.AppendLine(GenerateMethodExitCode(info, mthd_name, target));
-            
+
+            ProcessedTokens.Add(info.MetadataToken);
+
             return builder.ToString();
         }
         #endregion
@@ -263,7 +356,7 @@ namespace IL2ASM.Target
             string method = "";
             string method_name = MangleConstructorName(info);
 
-            method += target.GenerateSymbol(info.IsPublic, info.IsStatic, true, false, true, true, method_name);
+            method += target.GenerateSymbol(info.IsPublic, info.IsStatic, true, false, true, true, FinalConstructorName(info));
 
             return method;
         }
@@ -323,6 +416,9 @@ namespace IL2ASM.Target
 
         public string ParseConstructor(ConstructorInfo info, ITarget target)
         {
+            if (ProcessedTokens.Contains(info.MetadataToken))
+                return "";
+
             MethodBody bdy = info.GetMethodBody();
             StringBuilder builder = new StringBuilder();
 
@@ -330,14 +426,16 @@ namespace IL2ASM.Target
 
             builder.AppendLine(GenerateConstructorSignature(info, target));
             builder.AppendLine(GenerateConstructorEntryCode(info, target, out mthd_name));
-            builder.AppendLine(ParseIL(info.GetMethodBody(), target));
+            builder.AppendLine(ParseIL(info.Module, info.GetMethodBody(), info.GetParameters(), target));
             builder.AppendLine(GenerateConstructorExitCode(info, mthd_name, target));
+
+            ProcessedTokens.Add(info.MetadataToken);
 
             return builder.ToString();
         }
         #endregion
 
-        public string ParseClass(Type t, ITarget target)
+        public void ParseClass(Type t, ITarget target)
         {
             string mangled_parent_class_name = "";
             if (t.BaseType != null)
@@ -351,8 +449,6 @@ namespace IL2ASM.Target
             Dictionary<string, ConstructorDefinition> ctor_defs = new Dictionary<string, ConstructorDefinition>();
             List<string> vtable = new List<string>();
 
-            StringBuilder builder = new StringBuilder();
-
             var mthds = t.GetMethods((BindingFlags)int.MaxValue);
             var ctors = t.GetConstructors();
 
@@ -362,10 +458,20 @@ namespace IL2ASM.Target
                 ParseClass(t.BaseType, target);
 
             //We want to add the parent's vtable on top first
-            if(t.BaseType != null)
+            if (t.BaseType != null)
             {
-                vtable.AddRange(ClassDefinitions[mangled_parent_class_name].FinalVTable.ToArray());
+                var vtable_p = ClassDefinitions[mangled_parent_class_name].FinalVTable;
+                for (int i = 0; i < vtable_p.Count; i++)
+                {
+                    vtable.Add(vtable_p[i]);
+
+                    if (ClassDefinitions[mangled_parent_class_name].MethodVTable.ContainsKey(vtable_p[i]))
+                        method_defs[vtable_p[i]] = ClassDefinitions[mangled_parent_class_name].MethodVTable[vtable_p[i]];
+                    else
+                        ctor_defs[vtable_p[i]] = ClassDefinitions[mangled_parent_class_name].ConstructorTable[vtable_p[i]];
+                }
             }
+
 
 
             //Add struct declaration for parent class, if present
@@ -386,20 +492,8 @@ namespace IL2ASM.Target
 
                 int field_size = ClassDefinitions[field_type_name].Size;
 
-                //if field is static, don't track it here, same with static methods
-                if (fields[i].IsStatic)
-                {
-                    //Append the mangled name to the instruction stream
-                    builder.AppendLine(target.GenerateSymbol(fields[i].IsPublic, fields[i].IsStatic, true, !fields[i].IsInitOnly, false, true, mangled_field_name));
-
-                    //Allocate space for the variable
-                    builder.AppendLine(target.AllocateSpace(field_size));
-
-                    continue;
-                }
-
                 //Round up to the field size
-                if (sz % field_size != 0)
+                if (!fields[i].IsStatic && sz % field_size != 0)
                     sz += (field_size - (sz % field_size));
 
                 field_defs[fields[i].Name] = new FieldDefinition()
@@ -410,8 +504,9 @@ namespace IL2ASM.Target
                         Class = t.Name,
                         Namespace = t.Namespace,
                         IsPublic = fields[i].IsPublic,
-                        IsStatic = false,
+                        IsStatic = fields[i].IsStatic,
                         MetadataToken = fields[i].MetadataToken,
+                        FinalName = FinalFieldName(fields[i]),
                     },
                     IsProperty = false,
                     Type = fields[i].FieldType,
@@ -421,7 +516,8 @@ namespace IL2ASM.Target
 
                 FieldMetadataTokens[fields[i].MetadataToken] = field_defs[fields[i].Name];
 
-                sz += field_size;
+                if (!fields[i].IsStatic)
+                    sz += field_size;
             }
 
             //Add all the mangled names for the methods
@@ -437,9 +533,11 @@ namespace IL2ASM.Target
                         IsPublic = mthds[i].IsPublic,
                         IsStatic = mthds[i].IsStatic,
                         MetadataToken = mthds[i].MetadataToken,
+                        FinalName = FinalMethodName(mthds[i]),
                     },
                     Parameters = mthds[i].GetParameters(),
                     ReturnType = mthds[i].ReturnType,
+                    Info = mthds[i],
                 };
 
                 MethodMetadataTokens[mthds[i].MetadataToken] = method_defs[MangleMethodName(mthds[i])];
@@ -462,8 +560,10 @@ namespace IL2ASM.Target
                         IsPublic = ctors[i].IsPublic,
                         IsStatic = ctors[i].IsStatic,
                         MetadataToken = ctors[i].MetadataToken,
+                        FinalName = FinalConstructorName(ctors[i]),
                     },
-                    Parameters = ctors[i].GetParameters()
+                    Parameters = ctors[i].GetParameters(),
+                    Info = ctors[i],
                 };
 
                 CTorMetadataTokens[ctors[i].MetadataToken] = ctor_defs[MangleConstructorName(ctors[i])];
@@ -487,8 +587,6 @@ namespace IL2ASM.Target
             };
             ClassMetadataTokens[t.MetadataToken] = def;
             ClassDefinitions[mangled_class_name] = def;
-
-            return builder.ToString();
         }
 
         public string CompileClass(Type t, ITarget target)
@@ -498,11 +596,39 @@ namespace IL2ASM.Target
             var mthds = t.GetMethods((BindingFlags)int.MaxValue);
             var ctors = t.GetConstructors();
 
-            for (int i = 0; i < ctors.Length; i++)
-                builder.AppendLine(ParseConstructor(ctors[i], target));
+            var def = ClassDefinitions[MangleClassName(t)];
 
-            for (int i = 0; i < mthds.Length; i++)
-                builder.AppendLine(ParseMethod(mthds[i], target));
+
+            //Allocate space for the static field
+            //if field is static, don't track it here, same with static methods
+
+            var key_col = def.FieldTable.Values;
+            for (int i = 0; i < key_col.Count; i++)
+            {
+                var element = key_col.ElementAt(i);
+                if (element.Entry.IsStatic)
+                {
+                    //Append the mangled name to the instruction stream
+                    builder.AppendLine(target.GenerateSymbol(element.Entry.IsPublic, element.Entry.IsStatic, true, true, false, true, element.Entry.FinalName));
+
+                    //Allocate space for the variable
+                    builder.AppendLine(target.AllocateSpace(element.Size));
+                }
+            }
+
+            if (def.FinalVTable.Count > 0)
+            {
+                builder.AppendLine(target.GenerateSymbol(true, true, true, false, false, true, MangleClassName(t)));
+                builder.AppendLine(target.GenerateVTable(def.FinalVTable, def.MethodVTable, def.ConstructorTable));
+
+                for (int i = 0; i < def.FinalVTable.Count; i++)
+                {
+                    if (def.MethodVTable.ContainsKey(def.FinalVTable[i]))
+                        builder.AppendLine(ParseMethod(def.MethodVTable[def.FinalVTable[i]].Info, target));
+                    else
+                        builder.AppendLine(ParseConstructor(def.ConstructorTable[def.FinalVTable[i]].Info, target));
+                }
+            }
 
             return builder.ToString();
         }

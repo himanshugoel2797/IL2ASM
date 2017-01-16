@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+//using System.Threading.Tasks;
 
 namespace TestApplication
 {
@@ -18,7 +18,7 @@ namespace TestApplication
 
         }
 
-        public virtual void Tester()
+        public virtual void Tester(ref int b)
         {
             Console.Write("Test");
         }
@@ -46,10 +46,10 @@ namespace TestApplication
             }
         }
 
-        public override void Tester()
+        public override void Tester(ref int b)
         {
             this.GetType();
-            Console.WriteLine("Test2");
+            Console.WriteLine("Test2" + b.ToString());
         }
 
         static void Main(string[] args)
@@ -57,8 +57,10 @@ namespace TestApplication
             F a;
             a.a = 50;
 
+            int z = 0;
+
             Program prog = new Program();
-            prog.Tester();
+            prog.Tester(ref z);
         }
 
         public void Dispose()

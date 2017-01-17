@@ -1,4 +1,5 @@
-﻿using IL2ASM.IL;
+﻿using IL2ASM.Binder;
+using IL2ASM.IL;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +22,7 @@ namespace IL2ASM.Target
 
         public bool IsPublic;
         public bool IsStatic;
+        public bool IsRefType;
     }
 
     public enum StackItemType
@@ -42,8 +44,6 @@ namespace IL2ASM.Target
     {
         public ClassEntry Entry;
         public Type Type;
-        public bool IsProperty;
-        public bool IsRefType;
 
         public int Size;
         public int Offset;
@@ -71,18 +71,19 @@ namespace IL2ASM.Target
         public int MetadataToken;
         public string ParentClass;
         public Type Type;
+        public string FinalName;
 
         public Dictionary<string, FieldDefinition> StaticFields;
         public Dictionary<string, FieldDefinition> InstanceFields;
-
         public Dictionary<string, FieldDefinition> FieldTable;  //Track via mangled names
+
         public Dictionary<string, MethodDefinition> MethodVTable;   //Track via mangled names
         public Dictionary<string, ConstructorDefinition> ConstructorTable;  //Track via mangled names
 
         public List<string> FinalVTable;    //Track mangled names, combine with VTables above to get final names
     }
 
-    class GenericParser
+    public class GenericParser
     {
         public const int MaxArguments = 512;
         public const int MaxLocalVariables = 512;
@@ -335,6 +336,7 @@ namespace IL2ASM.Target
                     else
                     {
                         //TODO error out
+
                     }
                 }
                 else if (op == OpCodes.Ret)
@@ -345,7 +347,7 @@ namespace IL2ASM.Target
                     //Allowing for optimization 
                     //target.FreeStackSpace()
 
-                    if(stack.Count > 0)
+                    if (stack.Count > 0)
                         returnSz = stack.Pop().Size;
 
 
@@ -356,7 +358,7 @@ namespace IL2ASM.Target
                 }
                 //else
                 //    throw new Exception();
-                
+
             }
             while (p.NextInstruction());
 
@@ -529,14 +531,71 @@ namespace IL2ASM.Target
         }
         #endregion
 
+        private MethodDefinition GenerateMethodDefinition(MethodInfo mthd, int token)
+        {
+            return new MethodDefinition()
+            {
+                Entry = new ClassEntry()
+                {
+                    Name = mthd.Name,
+                    Class = mthd.DeclaringType.Name,
+                    Namespace = mthd.DeclaringType.Namespace,
+                    IsPublic = mthd.IsPublic,
+                    IsStatic = mthd.IsStatic,
+                    MetadataToken = token,
+                    FinalName = FinalMethodName(mthd),
+                },
+                Parameters = mthd.GetParameters(),
+                ReturnType = mthd.ReturnType,
+                Info = mthd,
+            };
+        }
+
+        private ConstructorDefinition GenerateConstructorDefinition(ConstructorInfo ctor, int token)
+        {
+            return new ConstructorDefinition()
+            {
+                Entry = new ClassEntry()
+                {
+                    Name = ctor.Name,
+                    Class = ctor.DeclaringType.Name,
+                    Namespace = ctor.DeclaringType.Namespace,
+                    IsPublic = ctor.IsPublic,
+                    IsStatic = ctor.IsStatic,
+                    MetadataToken = token,
+                    FinalName = FinalConstructorName(ctor),
+                },
+                Parameters = ctor.GetParameters(),
+                Info = ctor,
+            };
+        }
+
         public void ParseClass(Type t, ITarget target)
         {
-            string mangled_parent_class_name = "";
-            if (t.BaseType != null)
-                mangled_parent_class_name = MangleClassName(t.BaseType);
+            Type baseClass = t.BaseType;
+            var override_params = t.GetCustomAttribute<OverrideParametersAttribute>();
 
+            string mangled_parent_class_name = "";
             string mangled_class_name = MangleClassName(t);
             int sz = 0;
+
+            int class_token = t.MetadataToken;
+
+            if (baseClass != null)
+                mangled_parent_class_name = MangleClassName(baseClass);
+
+            if (override_params != null)
+            {
+                baseClass = override_params.ParentType;
+                mangled_parent_class_name = "";
+
+                if (baseClass != null)
+                    mangled_parent_class_name = MangleClassName(baseClass);
+
+                mangled_class_name = MangleClassName(override_params.OverrideTarget);
+                class_token = override_params.OverrideTarget.MetadataToken;
+            }
+
 
             Dictionary<string, FieldDefinition> field_defs = new Dictionary<string, FieldDefinition>();
             Dictionary<string, MethodDefinition> method_defs = new Dictionary<string, MethodDefinition>();
@@ -546,13 +605,12 @@ namespace IL2ASM.Target
             var mthds = t.GetMethods((BindingFlags)int.MaxValue);
             var ctors = t.GetConstructors();
 
-
             //First add size for struct from parent class
-            if (t.BaseType != null && !ClassDefinitions.ContainsKey(mangled_parent_class_name))
-                ParseClass(t.BaseType, target);
+            if (baseClass != null && !ClassDefinitions.ContainsKey(mangled_parent_class_name))
+                ParseClass(baseClass, target);
 
             //We want to add the parent's vtable on top first
-            if (t.BaseType != null)
+            if (baseClass != null)
             {
                 var vtable_p = ClassDefinitions[mangled_parent_class_name].FinalVTable;
                 for (int i = 0; i < vtable_p.Count; i++)
@@ -569,7 +627,7 @@ namespace IL2ASM.Target
 
 
             //Add struct declaration for parent class, if present
-            if (t.BaseType != null)
+            if (baseClass != null)
                 sz += ClassDefinitions[mangled_parent_class_name].Size;
 
             //Now add variables from this class
@@ -584,7 +642,7 @@ namespace IL2ASM.Target
                 if (field_type.IsPointer)
                     field_type_name = field_type_name.Substring(0, field_type_name.Length - 1);
 
-                bool isRefType = (field_type_name == mangled_class_name) | field_type.IsPointer;
+                bool isRefType = field_type.IsClass;
 
                 //Handle the case where an object contains a field of its parent's type, this is only possible with reference types, so it ends up being a pointer.
                 if (!ClassDefinitions.ContainsKey(field_type_name) && field_type_name != mangled_class_name)
@@ -611,9 +669,8 @@ namespace IL2ASM.Target
                         IsStatic = fields[i].IsStatic,
                         MetadataToken = fields[i].MetadataToken,
                         FinalName = FinalFieldName(fields[i]),
+                        IsRefType = isRefType,
                     },
-                    IsRefType = isRefType,
-                    IsProperty = false,
                     Type = fields[i].FieldType,
                     Offset = sz,
                     Size = field_size
@@ -628,50 +685,34 @@ namespace IL2ASM.Target
             //Add all the mangled names for the methods
             for (int i = 0; i < mthds.Length; i++)
             {
-                method_defs[MangleMethodName(mthds[i])] = new MethodDefinition()
-                {
-                    Entry = new ClassEntry()
-                    {
-                        Name = mthds[i].Name,
-                        Class = mthds[i].DeclaringType.Name,
-                        Namespace = mthds[i].DeclaringType.Namespace,
-                        IsPublic = mthds[i].IsPublic,
-                        IsStatic = mthds[i].IsStatic,
-                        MetadataToken = mthds[i].MetadataToken,
-                        FinalName = FinalMethodName(mthds[i]),
-                    },
-                    Parameters = mthds[i].GetParameters(),
-                    ReturnType = mthds[i].ReturnType,
-                    Info = mthds[i],
-                };
+                string mangled_mthd_name = MangleMethodName(mthds[i]);
 
-                MethodMetadataTokens[mthds[i].MetadataToken] = method_defs[MangleMethodName(mthds[i])];
+                int token = mthds[i].MetadataToken;
+
+                var override_attr = mthds[i].GetCustomAttribute<MethodTokenOverrideAttribute>();
+                if (override_attr != null)
+                    token = override_attr.MetadataToken;
+
+                method_defs[mangled_mthd_name] = GenerateMethodDefinition(mthds[i], token);
+                MethodMetadataTokens[token] = method_defs[mangled_mthd_name];
 
                 //If this method doesn't already exist in the final vtable, add it
                 if (!vtable.Contains(MangleMethodName(mthds[i])))
                     vtable.Add(MangleMethodName(mthds[i]));
-
             }
 
             for (int i = 0; i < ctors.Length; i++)
             {
-                ctor_defs[MangleConstructorName(ctors[i])] = new ConstructorDefinition()
-                {
-                    Entry = new ClassEntry()
-                    {
-                        Name = ctors[i].Name,
-                        Class = ctors[i].DeclaringType.Name,
-                        Namespace = ctors[i].DeclaringType.Namespace,
-                        IsPublic = ctors[i].IsPublic,
-                        IsStatic = ctors[i].IsStatic,
-                        MetadataToken = ctors[i].MetadataToken,
-                        FinalName = FinalConstructorName(ctors[i]),
-                    },
-                    Parameters = ctors[i].GetParameters(),
-                    Info = ctors[i],
-                };
+                string mangled_ctor_name = MangleConstructorName(ctors[i]);
 
-                CTorMetadataTokens[ctors[i].MetadataToken] = ctor_defs[MangleConstructorName(ctors[i])];
+                int token = ctors[i].MetadataToken;
+
+                var override_attr = ctors[i].GetCustomAttribute<MethodTokenOverrideAttribute>();
+                if (override_attr != null)
+                    token = override_attr.MetadataToken;
+
+                ctor_defs[mangled_ctor_name] = GenerateConstructorDefinition(ctors[i], token);
+                CTorMetadataTokens[token] = ctor_defs[mangled_ctor_name];
 
                 //If this ctor doesn't already exist in the final vtable, add it
                 if (!vtable.Contains(MangleConstructorName(ctors[i])))
@@ -683,14 +724,15 @@ namespace IL2ASM.Target
             {
                 Size = sz,
                 ParentClass = mangled_parent_class_name,
+                FinalName = mangled_class_name,
                 ConstructorTable = ctor_defs,
                 FieldTable = field_defs,
                 MethodVTable = method_defs,
-                MetadataToken = t.MetadataToken,
+                MetadataToken = class_token,
                 FinalVTable = vtable,
                 Type = t,
             };
-            ClassMetadataTokens[t.MetadataToken] = def;
+            ClassMetadataTokens[class_token] = def;
             ClassDefinitions[mangled_class_name] = def;
         }
 
@@ -701,7 +743,16 @@ namespace IL2ASM.Target
             var mthds = t.GetMethods((BindingFlags)int.MaxValue);
             var ctors = t.GetConstructors();
 
-            var def = ClassDefinitions[MangleClassName(t)];
+
+            var override_params = t.GetCustomAttribute<OverrideParametersAttribute>();
+
+            string mangled_parent_class_name = "";
+            string mangled_class_name = MangleClassName(t);
+
+            if (override_params != null)
+                mangled_class_name = MangleClassName(override_params.OverrideTarget);
+
+            var def = ClassDefinitions[mangled_class_name];
 
 
             //Allocate space for the static field
@@ -723,8 +774,8 @@ namespace IL2ASM.Target
 
             if (def.FinalVTable.Count > 0)
             {
-                builder.AppendLine(target.GenerateSymbol(true, true, true, false, false, true, MangleClassName(t)));
-                builder.AppendLine(target.GenerateVTable(def.FinalVTable, def.MethodVTable, def.ConstructorTable));
+                //builder.AppendLine(target.GenerateSymbol(true, true, true, false, false, true, def.FinalName));
+                //builder.AppendLine(target.GenerateVTable(def.FinalVTable, def.MethodVTable, def.ConstructorTable));
 
                 for (int i = 0; i < def.FinalVTable.Count; i++)
                 {

@@ -30,6 +30,8 @@ namespace TestApplication
         {
             public int a;
             public float b;
+            public ushort c;
+            public string d;
         }
 
         F b;
@@ -54,10 +56,17 @@ namespace TestApplication
             Console.WriteLine("Test2" + b.ToString());
         }
 
+        public override string ToString()
+        {
+            return "T";
+        }
+
         static void Main(string[] args)
         {
             F a;
             a.a = 50;
+            a.d = "T";
+            a.d.ToLower();
 
             int z = 0;
             

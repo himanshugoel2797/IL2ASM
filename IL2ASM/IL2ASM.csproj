@@ -48,8 +48,13 @@
     <Compile Include="Builtins\NativeObject.cs" />
     <Compile Include="Builtins\NativeValueType.cs" />
     <Compile Include="Builtins\Types\NativeInt32.cs" />
+    <Compile Include="IL\CodeGenerator.cs" />
+    <Compile Include="IL\Compiler.cs" />
+    <Compile Include="IL\FieldCollection.cs" />
+    <Compile Include="IL\Helpers.cs" />
     <Compile Include="IL\ILParser.cs" />
     <Compile Include="IL\OpCodeValues.cs" />
+    <Compile Include="IL\VTableCollection.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Target\GenericParser.cs" />

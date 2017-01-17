@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace IL2ASM.Binder
 {
-    [AttributeUsage(AttributeTargets.All, Inherited = false, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
     public sealed class OverrideParametersAttribute : Attribute
     {
         readonly Type override_target;

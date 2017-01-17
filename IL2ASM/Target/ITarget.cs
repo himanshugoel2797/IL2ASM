@@ -5,7 +5,7 @@ using System.Reflection.Emit;
 
 namespace IL2ASM.Target
 {
-    internal interface ITarget
+    public interface ITarget
     {
         void InitializeTarget(GenericParser p);
 
@@ -36,8 +36,9 @@ namespace IL2ASM.Target
         string Pop();
 
         string GenerateSymbol(bool isPublic, bool isStatic, bool read, bool write, bool exec, bool isInited, string name);
+
         string AllocateSpace(int size);
 
-        string GenerateVTable(List<string> table, Dictionary<string, MethodDefinition> mthds, Dictionary<string, ConstructorDefinition> ctors);
+        string GenerateVTable(IL.VTableCollection.VTable table);
     }
 }

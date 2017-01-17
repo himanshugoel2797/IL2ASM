@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace IL2ASM.Builtins.Types
 {
-    class NativeInt32
+    struct NativeInt32
     {
+        private int val;
     }
 }

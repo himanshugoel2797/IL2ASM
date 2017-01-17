@@ -1,4 +1,5 @@
-﻿using System;
+﻿using IL2ASM.Builtins;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -37,7 +38,9 @@ namespace IL2ASM.Target
             }*/
 
             var types = a.GetTypes();
-            
+
+            p.ParseClass(typeof(NativeObject), parsers[arch]);
+
             //First parse all the classes, build their structures, allocate static globals
             for (int i = 0; i < types.Length; i++)
             {

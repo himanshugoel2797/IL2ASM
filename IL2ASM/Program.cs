@@ -1,4 +1,5 @@
-﻿using IL2ASM.Target;
+﻿using IL2ASM.IL;
+using IL2ASM.Target;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,24 +11,16 @@ namespace IL2ASM
 {
     class Program
     {
-
-        struct F
-        {
-            public int a;
-            public double b;
-        }
-
-        static void TestMethod()
-        {
-            F a;
-            a.a = 0;
-            a.a += 50;
-        }
-
         static void Main(string[] args)
         {
             Assembly assem = Assembly.LoadFile(System.IO.Path.GetFullPath("TestApplication.exe"));
-            Console.WriteLine(TargetManager.ParseAssembly("x86_64_gas", assem));
+
+            var x86_64_target = new Target.x86_64.Target();
+            Compiler compiler = new Compiler(x86_64_target);
+
+            compiler.CompileAssembly(assem);
+
+            Console.WriteLine(compiler.Code);
 
             /*
             for(int i = 0; i < assem.DefinedTypes.Count(); i++)

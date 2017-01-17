@@ -1,4 +1,5 @@
-﻿using System;
+﻿using IL2ASM.IL;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -145,22 +146,13 @@ namespace IL2ASM.Target.x86_64
             }
         }
 
-        public string GenerateVTable(List<string> vtable, Dictionary<string, MethodDefinition> mthds, Dictionary<string, ConstructorDefinition> ctors)
+        public string GenerateVTable(IL.VTableCollection.VTable vtable)
         {
             StringBuilder builder = new StringBuilder();
 
-            for (int i = 0; i < vtable.Count; i++)
+            for (int i = 0; i < vtable.Entries.Count; i++)
             {
-                string name = "";
-                if (mthds.ContainsKey(vtable[i]))
-                {
-                    name = mthds[vtable[i]].Entry.FinalName;
-                }
-                else
-                {
-                    name = ctors[vtable[i]].Entry.FinalName;
-                }
-
+                string name = Helpers.GetMethodName(vtable.Entries[i].Info);
                 builder.AppendLine($".long ${name}");
             }
 

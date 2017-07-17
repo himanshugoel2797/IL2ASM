@@ -10,7 +10,7 @@ namespace IL2ASM.IL
 {
     public partial class Compiler
     {
-        public static readonly Type[] SpecialCaseTypes = new Type[] { typeof(Array), typeof(Enum), typeof(object), typeof(void), typeof(string), typeof(IntPtr), typeof(UIntPtr), typeof(TypedReference), typeof(byte), typeof(sbyte), typeof(ushort), typeof(short), typeof(char), typeof(uint), typeof(int), typeof(ulong), typeof(long), typeof(float), typeof(double), typeof(bool) };
+        public static readonly Type[] SpecialCaseTypes = new Type[] { typeof(Array), typeof(Enum), typeof(object), typeof(void), typeof(string), typeof(System.ValueType), typeof(System.Runtime.CompilerServices.RuntimeHelpers), typeof(IntPtr), typeof(UIntPtr), typeof(TypedReference), typeof(byte), typeof(sbyte), typeof(ushort), typeof(short), typeof(char), typeof(uint), typeof(int), typeof(ulong), typeof(long), typeof(float), typeof(double), typeof(bool) };
 
         public FieldCollection FieldSets;
         public VTableCollection VTableSets;
@@ -78,7 +78,7 @@ namespace IL2ASM.IL
 
                     //This token is being processed now, add it first to resolve self references.
                     ProcessedTokens.Add(v.Info.MetadataToken);
-
+                    
                     //Process this method, generating code
                     b.AppendLine(CompileMethod(v.Info));
                 }

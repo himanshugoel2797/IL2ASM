@@ -4,17 +4,15 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{6BC25616-91A8-4AFB-A6A0-7C2A63315DDE}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <ProjectGuid>{1BB8AD39-138B-4CB5-91A0-A64D35A7F0AB}</ProjectGuid>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>IL2ASM</RootNamespace>
-    <AssemblyName>IL2ASM</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <RootNamespace>CLRToCOSR</RootNamespace>
+    <AssemblyName>CLRToCOSR</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -22,17 +20,14 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -45,38 +40,13 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Builtins\NativeObject.cs" />
-    <Compile Include="Builtins\NativeValueType.cs" />
-    <Compile Include="Builtins\Types\NativeInt32.cs" />
-    <Compile Include="IL\CodeGenerator.cs" />
-    <Compile Include="IL\Compiler.cs" />
-    <Compile Include="IL\FieldCollection.cs" />
-    <Compile Include="IL\Helpers.cs" />
-    <Compile Include="IL\ILParser.cs" />
-    <Compile Include="IL\MethodInformation.cs" />
-    <Compile Include="IL\OpCodeValues.cs" />
-    <Compile Include="IL\VTableCollection.cs" />
-    <Compile Include="Program.cs" />
+    <Compile Include="CLRToCOSR.cs" />
+    <Compile Include="MethodData.cs" />
+    <Compile Include="MethodFlags.cs" />
+    <Compile Include="ParamData.cs" />
+    <Compile Include="ParamFlags.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Target\GenericParser.cs" />
-    <Compile Include="Target\ITarget.cs" />
-    <Compile Include="Target\TargetManager.cs" />
-    <Compile Include="Target\x86_64\RegisterAllocator.cs" />
-    <Compile Include="Target\x86_64\Target.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
-  </ItemGroup>
-  <ItemGroup />
-  <ItemGroup>
-    <ProjectReference Include="..\IL2ASM.Binder\IL2ASM.Binder.csproj">
-      <Project>{395c523d-f307-4518-a307-7fb785791df6}</Project>
-      <Name>IL2ASM.Binder</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\TestApplication\TestApplication.csproj">
-      <Project>{854c70da-787f-408a-8faa-d3a11694af16}</Project>
-      <Name>TestApplication</Name>
-    </ProjectReference>
+    <Compile Include="VTableCollection.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

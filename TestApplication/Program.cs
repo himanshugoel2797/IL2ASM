@@ -20,7 +20,7 @@ namespace TestApplication
 
         public virtual void Tester(ref int b)
         {
-            Console.Write("Test");
+
         }
     }
 
@@ -53,7 +53,6 @@ namespace TestApplication
         public override void Tester(ref int b)
         {
             this.b.a = b;
-            Console.WriteLine("Test2" + b.ToString());
         }
 
         public override string ToString()
@@ -76,7 +75,7 @@ namespace TestApplication
 
         public void Dispose()
         {
-            throw new NotImplementedException();
+
         }
     }
 }

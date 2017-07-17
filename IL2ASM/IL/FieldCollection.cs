@@ -99,6 +99,23 @@ namespace IL2ASM.IL
 
                     FieldTables[typeof(Enum)] = fTable;
                 }
+                else if (t == typeof(System.ValueType))
+                {   //Struct type
+                    var fTable = new FieldTable()
+                    {
+                        Entries = new List<FieldData>(),
+                        Size = 0,
+                    };
+
+                    fTable.Entries.Add(new FieldData()
+                    {
+                        Info = typeof(NativeInt32).GetFields((BindingFlags)Int32.MaxValue)[0],
+                        Offset = 0,
+                        Size = fTable.Size
+                    });
+
+                    FieldTables[typeof(System.ValueType)] = fTable;
+                }
                 else
                 {
                     var fTable = new FieldTable()
@@ -122,7 +139,6 @@ namespace IL2ASM.IL
 
             if (t.BaseType != null && t.BaseType != t && !t.IsEnum)
             {
-                Console.WriteLine(t.BaseType.Name);
                 AddType(t.BaseType);
             }
 

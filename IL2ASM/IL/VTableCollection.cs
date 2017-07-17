@@ -45,7 +45,7 @@ namespace IL2ASM.IL
                     {
                         Entries = new List<VTableEntry>()
                     };
-                    
+
                     vTable.Entries.Add(new VTableEntry()
                     {
                         Info = typeof(NativeObject).GetMethods((BindingFlags)Int32.MaxValue)[0]
@@ -53,12 +53,29 @@ namespace IL2ASM.IL
 
                     VTables[typeof(object)] = vTable;
                 }
+                else if (t == typeof(System.ValueType))
+                {
+                    var vTable = new VTable()
+                    {
+                        Entries = new List<VTableEntry>()
+                    };
+
+                    vTable.Entries.Add(new VTableEntry()
+                    {
+                        Info = typeof(NativeValueType).GetMethods((BindingFlags)Int32.MaxValue)[0]
+                    });
+
+                    VTables[typeof(System.ValueType)] = vTable;
+                }
 
                 return;
             }
 
             if (t.BaseType != null)
+            {
+                Console.WriteLine($"AddType: {t.Name}");
                 AddType(t.BaseType);
+            }
 
             var vtable = new List<VTableEntry>();
 

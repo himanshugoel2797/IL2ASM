@@ -53,6 +53,7 @@ namespace IL2ASM.IL
         {
             "GetType",
             "GetHashCode",
+            "ToString",
         };
 
         private static readonly MethodInfo[] SpecialFunctionSubs = new MethodInfo[]
